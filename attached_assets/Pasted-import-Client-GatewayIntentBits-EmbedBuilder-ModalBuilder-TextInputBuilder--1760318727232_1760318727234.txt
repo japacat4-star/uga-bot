@@ -1,0 +1,211 @@
+import {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} from "discord.js";
+import dotenv from "dotenv";
+dotenv.config();
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+const activePoints = new Map();
+const activity = new Map();
+
+function registerActivity(userId) {
+  activity.set(userId, Date.now());
+}
+
+client.once("ready", async () => {
+  console.log(`✅ Bot conectado como ${client.user.tag}`);
+
+  const recrutamento = client.channels.cache.find(c => c.name === "📋・recrutamento");
+  if (recrutamento) {
+    await recrutamento.bulkDelete(10).catch(() => {});
+    const botao = new ButtonBuilder()
+      .setCustomId("abrir_formulario")
+      .setLabel("📋 Preencher Formulário de Recrutamento")
+      .setStyle(ButtonStyle.Primary);
+
+    await recrutamento.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor("Yellow")
+          .setTitle("📋 Sistema de Recrutamento")
+          .setDescription("Clique no botão abaixo para preencher o formulário de recrutamento.")
+      ],
+      components: [new ActionRowBuilder().addComponents(botao)]
+    });
+  }
+
+  // 🔥 Botão de bate-ponto fixo
+  const canalPonto = client.channels.cache.find(c => c.name === "🔥・bate-ponto");
+  if (canalPonto) {
+    await canalPonto.bulkDelete(10).catch(() => {});
+    const botoes = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("iniciar_ponto").setLabel("🕒 Iniciar Ponto").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("pausar_ponto").setLabel("⏸️ Pausar").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("finalizar_ponto").setLabel("✅ Finalizar").setStyle(ButtonStyle.Danger)
+    );
+
+    await canalPonto.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor("Orange")
+          .setTitle("🔥 Sistema de Bate-Ponto")
+          .setDescription("Use os botões abaixo para iniciar, pausar ou finalizar seu ponto.")
+      ],
+      components: [botoes]
+    });
+  }
+
+  setInterval(() => {
+    const agora = Date.now();
+    const dias14 = 14 * 24 * 60 * 60 * 1000;
+
+    client.guilds.cache.forEach(guild => {
+      guild.members.cache.forEach(member => {
+        if (member.user.bot) return;
+        const last = activity.get(member.id);
+        if (!last || agora - last > dias14) {
+          const canalSaida = guild.channels.cache.find(c => c.name === "logs-saida");
+          if (canalSaida)
+            canalSaida.send(`⚠️ ${member.user.tag} foi removido por inatividade (+14 dias).`);
+          member.kick("Inatividade +14 dias").catch(() => {});
+        }
+      });
+    });
+  }, 24 * 60 * 60 * 1000); // roda 1x por dia
+});
+
+// 🧠 INTERAÇÕES UNIFICADAS
+client.on("interactionCreate", async (interaction) => {
+  // 📋 Formulário de Recrutamento
+  if (interaction.isButton() && interaction.customId === "abrir_formulario") {
+    const modal = new ModalBuilder()
+      .setCustomId("form_recrutamento")
+      .setTitle("📋 Formulário de Recrutamento");
+
+    const campos = [
+      { id: "nick", label: "Nick no jogo", required: true },
+      { id: "idjogo", label: "ID no jogo", required: true },
+      { id: "recrutador", label: "ID do recrutador", required: true },
+      { id: "whats", label: "WhatsApp (opcional)", required: false }
+    ];
+
+    modal.addComponents(
+      ...campos.map(c => new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId(c.id)
+          .setLabel(c.label)
+          .setStyle(TextInputStyle.Short)
+          .setRequired(c.required)
+      ))
+    );
+
+    return interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId === "form_recrutamento") {
+    const nick = interaction.fields.getTextInputValue("nick");
+    const idjogo = interaction.fields.getTextInputValue("idjogo");
+    const recrutador = interaction.fields.getTextInputValue("recrutador");
+    const whats = interaction.fields.getTextInputValue("whats") || "Não informado";
+
+    const solicitacoes = interaction.guild.channels.cache.find(c => c.name === "📋・solicitações-mlc");
+    if (!solicitacoes) return;
+
+    const embed = new EmbedBuilder()
+      .setColor("Yellow")
+      .setTitle("📋 Nova Solicitação de Recrutamento")
+      .addFields(
+        { name: "👤 Nick", value: nick },
+        { name: "🆔 ID no jogo", value: idjogo },
+        { name: "📞 WhatsApp", value: whats },
+        { name: "🎯 Recrutador", value: recrutador },
+        { name: "💬 Discord", value: `${interaction.user}` }
+      )
+      .setTimestamp();
+
+    await solicitacoes.send({
+      content: `Nova solicitação de ${interaction.user}`,
+      embeds: [embed]
+    });
+
+    await interaction.reply({ content: "✅ Seu formulário foi enviado com sucesso!", ephemeral: true });
+  }
+
+  // 🔥 Sistema de ponto
+  if (interaction.isButton()) {
+    const id = interaction.user.id;
+    const agora = Date.now();
+
+    switch (interaction.customId) {
+      case "iniciar_ponto":
+        if (activePoints.has(id))
+          return interaction.reply({ content: "❌ Você já tem um ponto ativo.", ephemeral: true });
+
+        activePoints.set(id, { inicio: agora, pausas: [], pausado: false });
+        registerActivity(id);
+        return interaction.reply({ content: "✅ Ponto iniciado com sucesso!", ephemeral: true });
+
+      case "pausar_ponto":
+        if (!activePoints.has(id))
+          return interaction.reply({ content: "❌ Nenhum ponto ativo para pausar.", ephemeral: true });
+
+        const ponto = activePoints.get(id);
+        if (ponto.pausado)
+          return interaction.reply({ content: "❌ O ponto já está pausado.", ephemeral: true });
+
+        ponto.pausado = true;
+        ponto.pausaInicio = agora;
+        return interaction.reply({ content: "⏸️ Ponto pausado.", ephemeral: true });
+
+      case "finalizar_ponto":
+        if (!activePoints.has(id))
+          return interaction.reply({ content: "❌ Você não tem um ponto ativo.", ephemeral: true });
+
+        const p = activePoints.get(id);
+        const duracao = ((agora - p.inicio) - (p.pausas.reduce((a, b) => a + b, 0))) / 1000;
+        const horas = Math.floor(duracao / 3600);
+        const minutos = Math.floor((duracao % 3600) / 60);
+        const tempoFinal = `${horas}h ${minutos}min`;
+
+        activePoints.delete(id);
+        registerActivity(id);
+
+        const canalPonto = interaction.channel;
+        await canalPonto.send(`📋 ${interaction.user} finalizou o ponto — **Duração:** ${tempoFinal}`);
+        return interaction.reply({ content: "✅ Ponto finalizado e registrado!", ephemeral: true });
+    }
+  }
+});
+
+// 👋 Logs de entrada e saída
+client.on("guildMemberAdd", (member) => {
+  const canal = member.guild.channels.cache.find(c => c.name === "logs-entrada");
+  if (canal) {
+    canal.send({ embeds: [new EmbedBuilder().setColor("Green").setTitle("👋 Novo membro!").setDescription(`${member} entrou no servidor.`).setTimestamp()] });
+  }
+});
+
+client.on("guildMemberRemove", (member) => {
+  const canal = member.guild.channels.cache.find(c => c.name === "logs-saida");
+  if (canal) {
+    canal.send({ embeds: [new EmbedBuilder().setColor("Red").setTitle("👋 Membro saiu").setDescription(`${member.user.tag} saiu do servidor.`).setTimestamp()] });
+  }
+});
+
+client.login(process.env.DISCORD_TOKEN);

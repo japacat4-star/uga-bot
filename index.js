@@ -5,6 +5,7 @@ import setupLogs from './modules/logs.js';
 import setupRecrutamento from './modules/recrutamento.js';
 import setupEventos from './modules/eventos.js';
 import setupPonto from './modules/ponto.js';
+import setupKickAuto from './modules/kickAuto.js';
 
 const client = new Client({
   intents: [
@@ -20,6 +21,7 @@ setupLogs(client);
 setupRecrutamento(client);
 setupEventos(client);
 setupPonto(client);
+setupKickAuto(client);
 
 // Bot conectado
 client.once(Events.ClientReady, () => {

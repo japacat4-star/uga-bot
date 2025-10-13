@@ -5,6 +5,7 @@ import {
   ButtonStyle,
   Events,
 } from 'discord.js';
+import { registerActivity } from './kickAuto.js';
 
 const pontosAtivos = new Map();
 
@@ -21,6 +22,8 @@ export default function setupPonto(client) {
   client.once(Events.ClientReady, async () => {
     const canalPonto = client.channels.cache.find(c => c.name === '🔥・bate-ponto');
     if (canalPonto) {
+      await canalPonto.bulkDelete(10).catch(() => {});
+      
       const embed = new EmbedBuilder()
         .setColor('#ffcc00')
         .setTitle('🔥 Sistema de Bate-Ponto MLC')
@@ -89,6 +92,9 @@ export default function setupPonto(client) {
       msgId: msg.id,
       canalId: msg.channelId,
     });
+
+    // Registrar atividade para sistema de kick automático
+    registerActivity(membro.id);
   });
 
   // Pausar ponto
@@ -160,6 +166,9 @@ export default function setupPonto(client) {
 
     interaction.update({ embeds: [embed], components: [] });
     pontosAtivos.delete(id);
+
+    // Registrar atividade para sistema de kick automático
+    registerActivity(membro.id);
   });
 
   console.log('✅ Módulo de Ponto carregado');

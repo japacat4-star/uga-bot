@@ -14,6 +14,8 @@ export default function setupRecrutamento(client) {
   client.once(Events.ClientReady, async () => {
     const recrutamentoChannel = client.channels.cache.find(c => c.name === '📋・recrutamento');
     if (recrutamentoChannel) {
+      await recrutamentoChannel.bulkDelete(10).catch(() => {});
+      
       const embed = new EmbedBuilder()
         .setColor('#ffcc00')
         .setTitle('📋 Sistema de Recrutamento MLC')
@@ -133,10 +135,12 @@ export default function setupRecrutamento(client) {
       const usuario = interaction.guild.members.cache.find(m => `<@${m.id}>` === userMention);
 
       if (cargo && usuario) {
-        await usuario.roles.add(cargo);
+        await usuario.roles.add(cargo).catch(() => {});
         const nick = embed.data.fields.find(f => f.name === '👤 Nick:').value;
         const id = embed.data.fields.find(f => f.name === '🆔 ID:').value;
-        await usuario.setNickname(`${nick} / ${id}`);
+        await usuario.setNickname(`${nick} / ${id}`).catch(() => {
+          console.log('⚠️ Sem permissão para alterar nickname');
+        });
       }
 
       const canalRelatorio = interaction.guild.channels.cache.find(c => c.name === '📋・relatórios-de-rec');
