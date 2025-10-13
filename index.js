@@ -1,4 +1,16 @@
-import { Client, GatewayIntentBits, EmbedBuilder } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  Events,
+} from "discord.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -7,43 +19,193 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
   ],
+  partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
-// Quando o bot ligar
-client.once("clientReady", () => {
+client.once(Events.ClientReady, async () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
+
+  // Enviar o botão no canal 📋・recrutamento
+  const guild = client.guilds.cache.first();
+  const canalRecrutamento = guild.channels.cache.find(c => c.name === "📋・recrutamento");
+  if (canalRecrutamento) {
+    const embed = new EmbedBuilder()
+      .setColor("Yellow")
+      .setTitle("📋 Sistema de Recrutamento MLC")
+      .setDescription("Clique no botão abaixo para enviar seu formulário de recrutamento.")
+      .setFooter({ text: "MLC • Sistema Automático de Recrutamento" });
+
+    const botao = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("abrir_form_recrutamento")
+        .setLabel("📋 Enviar Recrutamento")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await canalRecrutamento.send({ embeds: [embed], components: [botao] });
+  }
 });
 
-// Quando alguém entrar no servidor
-client.on("guildMemberAdd", async (member) => {
-  const channel = member.guild.channels.cache.find(c => c.name === "logs-entrada");
-  if (!channel) return;
+// Logs de entrada e saída
+client.on(Events.GuildMemberAdd, member => {
+  const canal = member.guild.channels.cache.find(c => c.name === "logs-entrada");
+  if (!canal) return;
+  const embed = new EmbedBuilder()
+    .setColor("Yellow")
+    .setTitle("👋 Novo Membro")
+    .setDescription(`${member.user.tag} entrou no servidor.`)
+    .setThumbnail(member.user.displayAvatarURL())
+    .setTimestamp();
+  canal.send({ embeds: [embed] });
+});
+
+client.on(Events.GuildMemberRemove, member => {
+  const canal = member.guild.channels.cache.find(c => c.name === "logs-saida");
+  if (!canal) return;
+  const embed = new EmbedBuilder()
+    .setColor("Yellow")
+    .setTitle("🚪 Membro Saiu")
+    .setDescription(`${member.user.tag} saiu do servidor.`)
+    .setThumbnail(member.user.displayAvatarURL())
+    .setTimestamp();
+  canal.send({ embeds: [embed] });
+});
+
+// Abrir formulário
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === "abrir_form_recrutamento") {
+    const modal = new ModalBuilder()
+      .setCustomId("form_recrutamento")
+      .setTitle("📋 Formulário de Recrutamento");
+
+    const nick = new TextInputBuilder()
+      .setCustomId("nick")
+      .setLabel("Seu Nick no jogo")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const idJogo = new TextInputBuilder()
+      .setCustomId("id_jogo")
+      .setLabel("Seu ID no jogo")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const idRecrutador = new TextInputBuilder()
+      .setCustomId("id_recrutador")
+      .setLabel("ID do recrutador")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const whats = new TextInputBuilder()
+      .setCustomId("whats")
+      .setLabel("Whats (opcional)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const discord = new TextInputBuilder()
+      .setCustomId("discord")
+      .setLabel("Seu Discord (não altere)")
+      .setStyle(TextInputStyle.Short)
+      .setValue(interaction.user.tag)
+      .setRequired(true);
+
+    const linha1 = new ActionRowBuilder().addComponents(nick);
+    const linha2 = new ActionRowBuilder().addComponents(idJogo);
+    const linha3 = new ActionRowBuilder().addComponents(idRecrutador);
+    const linha4 = new ActionRowBuilder().addComponents(whats);
+    const linha5 = new ActionRowBuilder().addComponents(discord);
+
+    modal.addComponents(linha1, linha2, linha3, linha4, linha5);
+    await interaction.showModal(modal);
+  }
+});
+
+// Enviar formulário para solicitações
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isModalSubmit()) return;
+  if (interaction.customId !== "form_recrutamento") return;
+
+  const nick = interaction.fields.getTextInputValue("nick");
+  const idJogo = interaction.fields.getTextInputValue("id_jogo");
+  const idRecrutador = interaction.fields.getTextInputValue("id_recrutador");
+  const whats = interaction.fields.getTextInputValue("whats") || "Não informado";
+  const discord = interaction.fields.getTextInputValue("discord");
+
+  const canalSolicitacoes = interaction.guild.channels.cache.find(c => c.name === "solicitações-mlc");
+  if (!canalSolicitacoes) {
+    return interaction.reply({ content: "❌ Canal de solicitações não encontrado.", ephemeral: true });
+  }
 
   const embed = new EmbedBuilder()
     .setColor("Yellow")
-    .setTitle("📥 Novo Membro Entrou!")
-    .setDescription(`👤 **${member.user.tag}** entrou no servidor.`)
-    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+    .setTitle("📝 Nova Solicitação de Recrutamento")
+    .addFields(
+      { name: "Nick", value: nick, inline: true },
+      { name: "ID no Jogo", value: idJogo, inline: true },
+      { name: "ID do Recrutador", value: idRecrutador, inline: true },
+      { name: "Whats", value: whats, inline: true },
+      { name: "Discord", value: discord, inline: false }
+    )
+    .setFooter({ text: "Use os botões abaixo para aprovar ou negar." })
     .setTimestamp();
 
-  channel.send({ embeds: [embed] });
+  const botoes = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`aprovar_${interaction.user.id}_${idJogo}_${nick}`)
+      .setLabel("✅ Aprovar")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`negar_${interaction.user.id}`)
+      .setLabel("❌ Negar")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await canalSolicitacoes.send({ embeds: [embed], components: [botoes] });
+  await interaction.reply({ content: "✅ Sua solicitação foi enviada com sucesso!", ephemeral: true });
 });
 
-// Quando alguém sair do servidor
-client.on("guildMemberRemove", async (member) => {
-  const channel = member.guild.channels.cache.find(c => c.name === "logs-saida");
-  if (!channel) return;
+// Aprovar ou negar
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isButton()) return;
 
-  const embed = new EmbedBuilder()
-    .setColor("Yellow")
-    .setTitle("📤 Membro Saiu!")
-    .setDescription(`👋 **${member.user.tag}** saiu do servidor.`)
-    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-    .setTimestamp();
+  const member = interaction.member;
+  const hasPermission = member.roles.cache.some(r => ["Superior", "Recrutador"].includes(r.name));
+  if (!hasPermission) {
+    return interaction.reply({ content: "❌ Você não tem permissão para aprovar ou negar.", ephemeral: true });
+  }
 
-  channel.send({ embeds: [embed] });
+  // Aprovar
+  if (interaction.customId.startsWith("aprovar_")) {
+    const [, userId, idJogo, nick] = interaction.customId.split("_");
+    const user = await interaction.guild.members.fetch(userId).catch(() => null);
+    if (!user) return interaction.reply({ content: "❌ Usuário não encontrado.", ephemeral: true });
+
+    const cargo = interaction.guild.roles.cache.find(r => r.name === "MLC");
+    if (cargo) await user.roles.add(cargo).catch(() => null);
+
+    await user.setNickname(`${nick} / ${idJogo}`).catch(() => null);
+
+    const canalRelatorio = interaction.guild.channels.cache.find(c => c.name === "relatórios-de-rec");
+    if (canalRelatorio) {
+      const embedRel = new EmbedBuilder()
+        .setColor("Green")
+        .setTitle("✅ Novo Recrutamento Aprovado")
+        .setDescription(`**${nick}** foi aprovado e recebeu o cargo MLC.`)
+        .setTimestamp();
+      canalRelatorio.send({ embeds: [embedRel] });
+    }
+
+    return interaction.reply({ content: "✅ Recrutamento aprovado com sucesso!", ephemeral: true });
+  }
+
+  // Negar
+  if (interaction.customId.startsWith("negar_")) {
+    return interaction.reply({ content: "❌ Solicitação negada.", ephemeral: true });
+  }
 });
 
-// Login do bot
 client.login(process.env.DISCORD_TOKEN);
