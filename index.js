@@ -3,7 +3,6 @@ import {
   Client,
   GatewayIntentBits,
   EmbedBuilder,
-  PermissionsBitField,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -22,8 +21,13 @@ const client = new Client({
   ],
 });
 
-client.once(Events.ClientReady, () => {
+const eventosAtivos = new Map();
+
+// ✅ Quando o bot inicia
+client.once(Events.ClientReady, async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}!`);
+
+  // Canal de recrutamento
   const recrutamentoChannel = client.channels.cache.find(c => c.name === '📋・recrutamento');
   if (recrutamentoChannel) {
     const embed = new EmbedBuilder()
@@ -34,149 +38,182 @@ client.once(Events.ClientReady, () => {
       .setCustomId('abrir_formulario')
       .setLabel('📄 Abrir Formulário')
       .setStyle(ButtonStyle.Primary);
-
     recrutamentoChannel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
+  }
+
+  // Canal de criar evento
+  const criarEventoChannel = client.channels.cache.find(c => c.name === '📖・criar-evento');
+  if (criarEventoChannel) {
+    const embed = new EmbedBuilder()
+      .setColor('#ffcc00')
+      .setTitle('🎯 Sistema de Eventos MLC')
+      .setDescription('Apenas **Superiores** podem criar eventos. Clique abaixo para abrir o formulário de criação.');
+    const button = new ButtonBuilder()
+      .setCustomId('criar_evento')
+      .setLabel('📝 Criar Evento')
+      .setStyle(ButtonStyle.Success);
+    criarEventoChannel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
   }
 });
 
-// Logs de entrada e saída
+// ✅ Logs de entrada/saída
 client.on(Events.GuildMemberAdd, async (member) => {
-  const canalEntrada = member.guild.channels.cache.find(c => c.name === 'logs-entrada');
-  if (!canalEntrada) return;
-  const embed = new EmbedBuilder()
-    .setColor('#ffcc00')
-    .setTitle('🚪 Novo membro entrou!')
-    .setDescription(`👤 ${member.user.tag} entrou no servidor!`)
-    .setThumbnail(member.user.displayAvatarURL())
-    .setTimestamp();
-  canalEntrada.send({ embeds: [embed] });
+  const canal = member.guild.channels.cache.find(c => c.name === 'logs-entrada');
+  if (canal) {
+    const embed = new EmbedBuilder()
+      .setColor('#ffcc00')
+      .setTitle('🚪 Novo membro entrou!')
+      .setDescription(`👤 ${member.user.tag} entrou no servidor!`)
+      .setThumbnail(member.user.displayAvatarURL())
+      .setTimestamp();
+    canal.send({ embeds: [embed] });
+  }
 });
 
 client.on(Events.GuildMemberRemove, async (member) => {
-  const canalSaida = member.guild.channels.cache.find(c => c.name === 'logs-saida');
-  if (!canalSaida) return;
-  const embed = new EmbedBuilder()
-    .setColor('#ffcc00')
-    .setTitle('🚪 Membro saiu do servidor!')
-    .setDescription(`👋 ${member.user.tag} saiu do servidor.`)
-    .setThumbnail(member.user.displayAvatarURL())
-    .setTimestamp();
-  canalSaida.send({ embeds: [embed] });
+  const canal = member.guild.channels.cache.find(c => c.name === 'logs-saida');
+  if (canal) {
+    const embed = new EmbedBuilder()
+      .setColor('#ffcc00')
+      .setTitle('🚪 Membro saiu!')
+      .setDescription(`👋 ${member.user.tag} saiu do servidor.`)
+      .setThumbnail(member.user.displayAvatarURL())
+      .setTimestamp();
+    canal.send({ embeds: [embed] });
+  }
 });
 
-// Formulário de Recrutamento
+// ✅ Interações do bot
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (interaction.isButton() && interaction.customId === 'abrir_formulario') {
+
+  // --- CRIAÇÃO DE EVENTO (SUPERIOR) ---
+  if (interaction.isButton() && interaction.customId === 'criar_evento') {
+    if (!interaction.member.roles.cache.some(r => r.name === 'Superior')) {
+      return interaction.reply({ content: '🚫 Apenas Superiores podem criar eventos.', ephemeral: true });
+    }
+
     const modal = new ModalBuilder()
-      .setCustomId('formulario_recrutamento')
-      .setTitle('📋 Formulário de Recrutamento');
+      .setCustomId('form_criar_evento')
+      .setTitle('📝 Criar Novo Evento');
 
-    const nick = new TextInputBuilder()
-      .setCustomId('nick')
-      .setLabel('Nick no jogo')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    const idJogo = new TextInputBuilder()
-      .setCustomId('id_jogo')
-      .setLabel('ID no jogo')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    const idRecrutador = new TextInputBuilder()
-      .setCustomId('id_recrutador')
-      .setLabel('ID do Recrutador')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    const whatsapp = new TextInputBuilder()
-      .setCustomId('whatsapp')
-      .setLabel('WhatsApp (opcional)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false);
+    const tipo = new TextInputBuilder().setCustomId('tipo').setLabel('Tipo de Ação').setStyle(TextInputStyle.Short).setRequired(true);
+    const horario = new TextInputBuilder().setCustomId('horario').setLabel('Horário de Início').setStyle(TextInputStyle.Short).setRequired(true);
+    const vagas = new TextInputBuilder().setCustomId('vagas').setLabel('Quantidade de vagas').setStyle(TextInputStyle.Short).setRequired(true);
+    const desc = new TextInputBuilder().setCustomId('descricao').setLabel('Descrição do Evento').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
     modal.addComponents(
-      new ActionRowBuilder().addComponents(nick),
-      new ActionRowBuilder().addComponents(idJogo),
-      new ActionRowBuilder().addComponents(idRecrutador),
-      new ActionRowBuilder().addComponents(whatsapp)
+      new ActionRowBuilder().addComponents(tipo),
+      new ActionRowBuilder().addComponents(horario),
+      new ActionRowBuilder().addComponents(vagas),
+      new ActionRowBuilder().addComponents(desc)
     );
 
     await interaction.showModal(modal);
   }
 
-  if (interaction.isModalSubmit() && interaction.customId === 'formulario_recrutamento') {
-    const nick = interaction.fields.getTextInputValue('nick');
-    const idJogo = interaction.fields.getTextInputValue('id_jogo');
-    const idRecrutador = interaction.fields.getTextInputValue('id_recrutador');
-    const whatsapp = interaction.fields.getTextInputValue('whatsapp') || 'Não informado';
+  // --- FORMULÁRIO DE EVENTO ENVIADO ---
+  if (interaction.isModalSubmit() && interaction.customId === 'form_criar_evento') {
+    const tipo = interaction.fields.getTextInputValue('tipo');
+    const horario = interaction.fields.getTextInputValue('horario');
+    const vagas = parseInt(interaction.fields.getTextInputValue('vagas'));
+    const descricao = interaction.fields.getTextInputValue('descricao');
 
-    const solicitacoes = interaction.guild.channels.cache.find(c => c.name === '📋・solicitações-mlc');
-    if (!solicitacoes) {
-      return interaction.reply({ content: '❌ Canal de solicitações não encontrado.', ephemeral: true });
-    }
+    const canalEventos = interaction.guild.channels.cache.find(c => c.name === '📖・eventos-mlc');
+    if (!canalEventos) return interaction.reply({ content: '❌ Canal de eventos não encontrado.', ephemeral: true });
 
     const embed = new EmbedBuilder()
       .setColor('#ffcc00')
-      .setTitle('📋 Nova Solicitação de Recrutamento')
-      .setDescription(
-        `👤 **Jogador:** ${interaction.user}\n🎮 **Nick:** ${nick}\n🆔 **ID Jogo:** ${idJogo}\n🤝 **ID Recrutador:** ${idRecrutador}\n📱 **WhatsApp:** ${whatsapp}\n🕓 **Data:** <t:${Math.floor(Date.now() / 1000)}:F>`
-      );
+      .setTitle(`📖 Novo Evento MLC`)
+      .setDescription(`**Tipo:** ${tipo}\n**Horário:** ${horario}\n**Descrição:** ${descricao}\n**Vagas:** ${vagas}`)
+      .addFields({ name: '👥 Participantes:', value: 'Nenhum ainda.' })
+      .setFooter({ text: `Criado por ${interaction.user.tag}` })
+      .setTimestamp();
 
-    const aprovar = new ButtonBuilder()
-      .setCustomId(`aprovar_${interaction.user.id}_${idJogo}_${nick}`)
-      .setLabel('✅ Aprovar')
-      .setStyle(ButtonStyle.Success);
+    const entrar = new ButtonBuilder().setCustomId(`entrar_${Date.now()}`).setLabel('✅ Participar do Evento').setStyle(ButtonStyle.Primary);
+    const iniciar = new ButtonBuilder().setCustomId(`iniciar_${Date.now()}`).setLabel('▶️ Iniciar').setStyle(ButtonStyle.Success);
+    const pausar = new ButtonBuilder().setCustomId(`pausar_${Date.now()}`).setLabel('⏸️ Pausar').setStyle(ButtonStyle.Secondary);
+    const finalizar = new ButtonBuilder().setCustomId(`finalizar_${Date.now()}`).setLabel('🏁 Finalizar').setStyle(ButtonStyle.Danger);
 
-    const negar = new ButtonBuilder()
-      .setCustomId(`negar_${interaction.user.id}`)
-      .setLabel('❌ Negar')
-      .setStyle(ButtonStyle.Danger);
-
-    await solicitacoes.send({
-      content: `📢 Nova solicitação de recrutamento de ${interaction.user}`,
+    const msg = await canalEventos.send({
       embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(aprovar, negar)],
+      components: [new ActionRowBuilder().addComponents(entrar), new ActionRowBuilder().addComponents(iniciar, pausar, finalizar)],
     });
 
-    await interaction.reply({ content: '📬 Sua solicitação foi enviada para análise!', ephemeral: true });
+    eventosAtivos.set(msg.id, {
+      criador: interaction.user.id,
+      tipo,
+      horario,
+      vagas,
+      descricao,
+      participantes: [],
+      pausas: [],
+      iniciado: false,
+      tempoInicio: null,
+    });
+
+    await interaction.reply({ content: '✅ Evento criado com sucesso em 📖・eventos-mlc!', ephemeral: true });
   }
 
-  if (interaction.isButton()) {
-    const { customId } = interaction;
+  // --- PARTICIPAÇÃO DE MLC ---
+  if (interaction.isButton() && interaction.customId.startsWith('entrar_')) {
+    const evento = eventosAtivos.get(interaction.message.id);
+    if (!evento) return interaction.reply({ content: '❌ Evento não encontrado.', ephemeral: true });
 
-    if (customId.startsWith('aprovar_')) {
-      const [_, userId, idJogo, nick] = customId.split('_');
-      const member = await interaction.guild.members.fetch(userId).catch(() => null);
-      if (!member) return interaction.reply({ content: '❌ Membro não encontrado.', ephemeral: true });
-
-      if (!interaction.member.roles.cache.some(r => r.name === 'Superior' || r.name === 'Recrutador')) {
-        return interaction.reply({ content: '🚫 Você não tem permissão para aprovar.', ephemeral: true });
-      }
-
-      const cargoMLC = interaction.guild.roles.cache.find(r => r.name === 'MLC');
-      const canalRelatorio = interaction.guild.channels.cache.find(c => c.name === '📋・relatórios-de-rec');
-
-      if (cargoMLC) await member.roles.add(cargoMLC).catch(() => {});
-      await member.setNickname(`${nick} / ${idJogo}`).catch(() => {});
-
-      if (canalRelatorio) {
-        const embed = new EmbedBuilder()
-          .setColor('#00ff88')
-          .setTitle('✅ Recrutamento Aprovado')
-          .setDescription(`👤 ${member} foi aprovado por ${interaction.user}\n🎮 Nick: **${nick}**\n🆔 ID: **${idJogo}**`);
-        canalRelatorio.send({ embeds: [embed] });
-      }
-
-      await interaction.update({ content: `✅ ${member} foi aprovado!`, components: [] });
+    if (!interaction.member.roles.cache.some(r => r.name === 'MLC')) {
+      return interaction.reply({ content: '🚫 Apenas membros da MLC podem participar.', ephemeral: true });
     }
 
-    if (customId.startsWith('negar_')) {
-      if (!interaction.member.roles.cache.some(r => r.name === 'Superior' || r.name === 'Recrutador')) {
-        return interaction.reply({ content: '🚫 Você não tem permissão para negar.', ephemeral: true });
-      }
+    const nick = interaction.member.displayName;
+    if (evento.participantes.includes(nick)) {
+      return interaction.reply({ content: '⚠️ Você já está inscrito neste evento.', ephemeral: true });
+    }
 
-      await interaction.update({ content: '❌ Recrutamento negado.', components: [] });
+    if (evento.participantes.length >= evento.vagas) {
+      return interaction.reply({ content: '🚫 O evento já atingiu o limite de vagas.', ephemeral: true });
+    }
+
+    evento.participantes.push(nick);
+
+    const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+    embed.spliceFields(0, 1, { name: '👥 Participantes:', value: evento.participantes.join('\n') });
+    embed.setDescription(`**Tipo:** ${evento.tipo}\n**Horário:** ${evento.horario}\n**Descrição:** ${evento.descricao}\n**Vagas:** ${evento.vagas - evento.participantes.length} restantes`);
+
+    await interaction.update({ embeds: [embed] });
+  }
+
+  // --- CONTROLE DE EVENTO (SUPERIOR) ---
+  if (interaction.isButton() && (interaction.customId.startsWith('iniciar_') || interaction.customId.startsWith('pausar_') || interaction.customId.startsWith('finalizar_'))) {
+    const evento = eventosAtivos.get(interaction.message.id);
+    if (!evento) return interaction.reply({ content: '❌ Evento não encontrado.', ephemeral: true });
+
+    if (interaction.user.id !== evento.criador && !interaction.member.roles.cache.some(r => r.name === 'Superior')) {
+      return interaction.reply({ content: '🚫 Apenas o criador ou Superiores podem controlar o evento.', ephemeral: true });
+    }
+
+    if (interaction.customId.startsWith('iniciar_')) {
+      evento.iniciado = true;
+      evento.tempoInicio = Date.now();
+      return interaction.reply({ content: '▶️ Evento iniciado com sucesso!', ephemeral: true });
+    }
+
+    if (interaction.customId.startsWith('pausar_')) {
+      if (!evento.iniciado) return interaction.reply({ content: '⚠️ O evento ainda não foi iniciado.', ephemeral: true });
+      evento.pausas.push(Date.now());
+      return interaction.reply({ content: '⏸️ Evento pausado.', ephemeral: true });
+    }
+
+    if (interaction.customId.startsWith('finalizar_')) {
+      const duracao = evento.tempoInicio ? Math.round((Date.now() - evento.tempoInicio) / 60000) : 0;
+      const embed = new EmbedBuilder()
+        .setColor('#00ff88')
+        .setTitle('🏁 Evento Finalizado')
+        .setDescription(`**Tipo:** ${evento.tipo}\n**Duração:** ${duracao} minutos\n**Pausas:** ${evento.pausas.length}\n\n👥 **Participantes:**\n${evento.participantes.join('\n') || 'Nenhum'}`)
+        .setFooter({ text: `Encerrado por ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.message.edit({ embeds: [embed], components: [] });
+      eventosAtivos.delete(interaction.message.id);
+      return interaction.reply({ content: '🏁 Evento finalizado e registrado!', ephemeral: true });
     }
   }
 });
