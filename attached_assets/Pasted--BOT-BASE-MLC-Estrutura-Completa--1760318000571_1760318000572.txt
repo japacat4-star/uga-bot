@@ -1,0 +1,155 @@
+// ==========================================
+// 🤖 BOT BASE MLC - Estrutura Completa
+// ==========================================
+
+import { 
+  Client, 
+  GatewayIntentBits, 
+  EmbedBuilder, 
+  ButtonBuilder, 
+  ButtonStyle, 
+  ActionRowBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} from "discord.js";
+import dotenv from "dotenv";
+dotenv.config();
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+// ==========================================
+// ✅ BOT ONLINE
+// ==========================================
+client.once("ready", () => {
+  console.log(`✅ Bot conectado como ${client.user.tag}`);
+});
+
+// ==========================================
+// 📥 LOGS DE ENTRADA E SAÍDA
+// ==========================================
+client.on("guildMemberAdd", async (member) => {
+  const channel = member.guild.channels.cache.find(c => c.name === "logs-entrada");
+  if (!channel) return;
+  const embed = new EmbedBuilder()
+    .setColor("Yellow")
+    .setTitle("👋 Novo membro chegou!")
+    .setDescription(`${member.user} entrou no servidor.`)
+    .setTimestamp();
+  channel.send({ embeds: [embed] });
+});
+
+client.on("guildMemberRemove", async (member) => {
+  const channel = member.guild.channels.cache.find(c => c.name === "logs-saida");
+  if (!channel) return;
+  const embed = new EmbedBuilder()
+    .setColor("Yellow")
+    .setTitle("🚪 Membro saiu do servidor")
+    .setDescription(`${member.user.tag} saiu do servidor.`)
+    .setTimestamp();
+  channel.send({ embeds: [embed] });
+});
+
+// ==========================================
+// 📋 SISTEMA DE RECRUTAMENTO
+// ==========================================
+client.on("ready", async () => {
+  const guild = client.guilds.cache.first();
+  const channel = guild.channels.cache.find(c => c.name === "📋・recrutamento");
+  if (!channel) return;
+
+  const button = new ButtonBuilder()
+    .setCustomId("abrir_formulario")
+    .setLabel("📝 Preencher Formulário de Recrutamento")
+    .setStyle(ButtonStyle.Primary);
+
+  const row = new ActionRowBuilder().addComponents(button);
+  await channel.send({ content: "Clique abaixo para se inscrever:", components: [row] });
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+  if (interaction.customId === "abrir_formulario") {
+    const modal = new ModalBuilder()
+      .setCustomId("form_recrutamento")
+      .setTitle("📋 Formulário de Recrutamento");
+
+    const nick = new TextInputBuilder()
+      .setCustomId("nick")
+      .setLabel("Nick no jogo")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const idjogo = new TextInputBuilder()
+      .setCustomId("idjogo")
+      .setLabel("ID no jogo")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const recrutador = new TextInputBuilder()
+      .setCustomId("recrutador")
+      .setLabel("ID do recrutador")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const whats = new TextInputBuilder()
+      .setCustomId("whats")
+      .setLabel("WhatsApp (opcional)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const row1 = new ActionRowBuilder().addComponents(nick);
+    const row2 = new ActionRowBuilder().addComponents(idjogo);
+    const row3 = new ActionRowBuilder().addComponents(recrutador);
+    const row4 = new ActionRowBuilder().addComponents(whats);
+
+    modal.addComponents(row1, row2, row3, row4);
+    await interaction.showModal(modal);
+  }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+  if (interaction.customId === "form_recrutamento") {
+    const nick = interaction.fields.getTextInputValue("nick");
+    const idjogo = interaction.fields.getTextInputValue("idjogo");
+    const recrutador = interaction.fields.getTextInputValue("recrutador");
+    const whats = interaction.fields.getTextInputValue("whats") || "Não informado";
+
+    const solicitacoes = interaction.guild.channels.cache.find(c => c.name === "📋・solicitações-mlc");
+    if (!solicitacoes) return;
+
+    const embed = new EmbedBuilder()
+      .setColor("Yellow")
+      .setTitle("📋 Nova Solicitação de Recrutamento")
+      .addFields(
+        { name: "👤 Nick", value: nick },
+        { name: "🆔 ID no jogo", value: idjogo },
+        { name: "📞 WhatsApp", value: whats },
+        { name: "🎯 Recrutador", value: recrutador },
+        { name: "💬 Discord", value: `${interaction.user}` }
+      )
+      .setTimestamp();
+
+    await solicitacoes.send({ content: `Nova solicitação de ${interaction.user}`, embeds: [embed] });
+    await interaction.reply({ content: "✅ Seu formulário foi enviado com sucesso!", ephemeral: true });
+  }
+});
+
+// ==========================================
+// 🧠 SISTEMAS AVANÇADOS (ponto, evento, kick)
+// ==========================================
+// ⚠️ Coloquei só as estruturas básicas; esses blocos precisam ser ativados aos poucos
+// pra evitar travar o Replit ou gerar automações sem teste.
+
+console.log("⚙️ Estrutura completa MLC pronta para receber os módulos de ponto, eventos e kick.");
+
+// ==========================================
+client.login(process.env.DISCORD_TOKEN);
