@@ -29,7 +29,7 @@ client.once(Events.ClientReady, () => {
     const embed = new EmbedBuilder()
       .setColor('#ffcc00')
       .setTitle('📋 Sistema de Recrutamento MLC')
-      .setDescription('Clique no botão abaixo para preencher seu formulário de recrutamento e entrar para a **MLC**!');
+      .setDescription('Clique no botão abaixo para preencher seu formulário e entrar para a **MLC**!');
     const button = new ButtonBuilder()
       .setCustomId('abrir_formulario')
       .setLabel('📄 Abrir Formulário')
@@ -111,7 +111,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const idRecrutador = interaction.fields.getTextInputValue('id_recrutador');
     const whatsapp = interaction.fields.getTextInputValue('whatsapp') || 'Não informado';
 
-    const solicitacoes = interaction.guild.channels.cache.find(c => c.name === 'solicitações-mlc');
+    const solicitacoes = interaction.guild.channels.cache.find(c => c.name === '📋・solicitações-mlc');
     if (!solicitacoes) {
       return interaction.reply({ content: '❌ Canal de solicitações não encontrado.', ephemeral: true });
     }
@@ -150,14 +150,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const member = await interaction.guild.members.fetch(userId).catch(() => null);
       if (!member) return interaction.reply({ content: '❌ Membro não encontrado.', ephemeral: true });
 
-      if (
-        !interaction.member.roles.cache.some(r => r.name === 'Superior' || r.name === 'Recrutador')
-      ) {
+      if (!interaction.member.roles.cache.some(r => r.name === 'Superior' || r.name === 'Recrutador')) {
         return interaction.reply({ content: '🚫 Você não tem permissão para aprovar.', ephemeral: true });
       }
 
       const cargoMLC = interaction.guild.roles.cache.find(r => r.name === 'MLC');
-      const canalRelatorio = interaction.guild.channels.cache.find(c => c.name === 'relatórios-de-rec');
+      const canalRelatorio = interaction.guild.channels.cache.find(c => c.name === '📋・relatórios-de-rec');
 
       if (cargoMLC) await member.roles.add(cargoMLC).catch(() => {});
       await member.setNickname(`${nick} / ${idJogo}`).catch(() => {});
@@ -174,9 +172,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (customId.startsWith('negar_')) {
-      if (
-        !interaction.member.roles.cache.some(r => r.name === 'Superior' || r.name === 'Recrutador')
-      ) {
+      if (!interaction.member.roles.cache.some(r => r.name === 'Superior' || r.name === 'Recrutador')) {
         return interaction.reply({ content: '🚫 Você não tem permissão para negar.', ephemeral: true });
       }
 
