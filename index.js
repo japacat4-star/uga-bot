@@ -27,5 +27,16 @@ setupKickAuto(client);
 client.once(Events.ClientReady, () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}!`);
 });
+// ===============================
+// 🌐 Servidor Web para manter o Replit online
+// ===============================
+import express from "express";
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("Bot UGA UGA está online! 🦍");
+});
+
+app.listen(3000, () => console.log("🌐 Servidor web ativo"));
 
 client.login(process.env.DISCORD_TOKEN);
