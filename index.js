@@ -1,29 +1,70 @@
-import { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, Events } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  Events
+} from "discord.js";
 import express from "express";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+// === CONFIGURAÇÃO DO CLIENT ===
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent
+  ],
   partials: [Partials.Channel]
 });
 
-// --- SERVIDOR WEB (Render) ---
+// === SERVIDOR WEB (Render) ===
 const server = express();
-server.all("/", (req, res) => {
-  res.send("Bot está rodando ✅");
-});
-server.listen(process.env.PORT || 3000, () => console.log("Servidor web ativo"));
+server.all("/", (req, res) => res.send("✅ Bot MLC está rodando"));
+server.listen(process.env.PORT || 3000, () =>
+  console.log("🌐 Servidor web ativo")
+);
 
-// --- LOG DE INICIALIZAÇÃO ---
-client.once("ready", () => {
-  console.log(`✅ Logado como ${client.user.tag}`);
+// === LOGIN ===
+client.once(Events.ClientReady, async (c) => {
+  console.log(`✅ Logado como ${c.user.tag}`);
+
+  // === LIMPAR CANAIS AUTOMATICAMENTE ===
+  const canaisParaLimpar = [
+    "🔥・bate-ponto",
+    "🚨・inatividades",
+    "📋・recrutamento"
+  ];
+
+  for (const canalNome of canaisParaLimpar) {
+    const canal = c.channels.cache.find(ch => ch.name === canalNome);
+    if (canal && canal.isTextBased()) {
+      try {
+        const mensagens = await canal.messages.fetch({ limit: 100 });
+        await canal.bulkDelete(mensagens, true);
+        console.log(`🧹 Canal "${canalNome}" limpo (${mensagens.size} mensagens apagadas).`);
+      } catch (err) {
+        console.log(`⚠️ Erro ao limpar ${canalNome}:`, err.message);
+      }
+    }
+  }
+
+  console.log("✨ Limpeza inicial concluída.");
 });
 
-// --- COMANDO DE RECRUTAMENTO ---
+// === INTERAÇÕES ===
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
-    // Formulário de recrutamento
+    // === COMANDO /RECRUTAR ===
     if (interaction.isChatInputCommand() && interaction.commandName === "recrutar") {
       const modal = new ModalBuilder()
         .setCustomId("form_recrutamento")
@@ -61,10 +102,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       );
 
       await interaction.showModal(modal);
+      return;
     }
 
-    // Resposta do formulário
+    // === RESPOSTA DO FORMULÁRIO ===
     if (interaction.isModalSubmit() && interaction.customId === "form_recrutamento") {
+      await interaction.deferReply({ ephemeral: true });
+
       const nome = interaction.fields.getTextInputValue("nome");
       const idjogo = interaction.fields.getTextInputValue("idjogo");
       const idrecrutador = interaction.fields.getTextInputValue("idrecrutador");
@@ -81,23 +125,44 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setColor("Green")
         .setTimestamp();
 
-      await interaction.reply({ embeds: [embed] });
+      await interaction.editReply({
+        content: "✅ Formulário enviado com sucesso!",
+        embeds: [embed]
+      });
+
+      // === LOG DE RECRUTAMENTO ===
+      console.log(`📝 Novo recrutamento registrado: ${nome} / ${idjogo}`);
+      return;
     }
 
-    // Botões de ponto
+    // === BOTÕES DE PONTO ===
     if (interaction.isButton()) {
+      await interaction.deferReply({ ephemeral: true }); // evita "interação falhou"
+
       if (interaction.customId === "iniciar_ponto") {
-        await interaction.reply(`🕒 ${interaction.user} iniciou o ponto.`);
+        await interaction.editReply({ content: `🕒 ${interaction.user} iniciou o ponto.` });
+        console.log(`🟢 ${interaction.user.tag} iniciou o ponto.`);
       } else if (interaction.customId === "pausar_ponto") {
-        await interaction.reply(`⏸️ ${interaction.user} pausou o ponto.`);
+        await interaction.editReply({ content: `⏸️ ${interaction.user} pausou o ponto.` });
+        console.log(`🟡 ${interaction.user.tag} pausou o ponto.`);
       } else if (interaction.customId === "encerrar_ponto") {
-        await interaction.reply(`✅ ${interaction.user} encerrou o ponto.`);
+        await interaction.editReply({ content: `✅ ${interaction.user} encerrou o ponto.` });
+        console.log(`🔴 ${interaction.user.tag} encerrou o ponto.`);
       }
+
+      return;
     }
   } catch (err) {
-    console.error("Erro na interação:", err);
-    if (interaction.replied === false) {
-      await interaction.reply({ content: "❌ Ocorreu um erro ao processar a interação.", ephemeral: true });
+    console.error("❌ Erro na interação:", err);
+    if (!interaction.replied) {
+      try {
+        await interaction.reply({
+          content: "❌ Ocorreu um erro ao processar sua interação.",
+          ephemeral: true
+        });
+      } catch (e) {
+        console.error("Falha ao enviar resposta de erro:", e);
+      }
     }
   }
 });
