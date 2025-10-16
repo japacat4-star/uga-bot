@@ -1,15 +1,14 @@
 {
   "name": "mlc-bot",
   "version": "1.0.0",
-  "description": "Bot do Discord MLC",
+  "description": "Bot da MLC com sistema de recrutamento, ponto e expulsão por inatividade.",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.3",
-    "express": "^4.19.2",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.16.3",
+    "fs": "^0.0.1-security"
   }
 }
+                    
