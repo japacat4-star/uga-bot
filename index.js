@@ -118,3 +118,15 @@ setInterval(async () => {
 }, 60 * 60 * 1000); // roda a cada 1h
 
 client.login(TOKEN);
+
+// --- MANTER ONLINE NO RENDER ---
+import express from "express";
+const server = express();
+
+server.all("/", (req, res) => {
+  res.send("Bot está rodando ✅");
+});
+
+server.listen(process.env.PORT || 3000, () => {
+  console.log("Servidor web ativo para manter o bot online!");
+});
