@@ -32,6 +32,7 @@ server.listen(process.env.PORT || 3000, () => console.log("Servidor web ativo"))
 
 // --- Dados temporários ---
 const ultimosPontos = new Map();
+const dadosPonto = new Map();
 
 // --- Canais principais ---
 const canais = {
@@ -39,7 +40,9 @@ const canais = {
   inativos: "🚨・inatividades",
   criarEvento: "📅・criar-eventos",
   eventos: "📖・eventos-mlc",
-  recrutamento: "📋・recrutamento"
+  recrutamento: "📋・recrutamento",
+  solicitacoes: "📋・solicitações-mlc",
+  relatoriosRec: "📋・relatórios-de-rec"
 };
 
 // === Função: limpar canal e enviar painéis ===
@@ -106,7 +109,7 @@ async function configurarCanais() {
       embeds: [
         new EmbedBuilder()
           .setTitle("📋 Formulário de Recrutamento MLC")
-          .setDescription("Clique abaixo para abrir o formulário de recrutamento e registrar um novo membro.")
+          .setDescription("Clique abaixo para abrir o formulário e registrar um novo membro.")
           .setColor("Green")
       ],
       components: [row]
@@ -126,56 +129,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // --- Bate Ponto ---
     if (interaction.isButton()) {
       const canalPonto = interaction.guild.channels.cache.find(c => c.name === canais.ponto);
-      const canalInativos = interaction.guild.channels.cache.find(c => c.name === canais.inativos);
 
+      // Iniciar
       if (interaction.customId === "iniciar_ponto") {
-        ultimosPontos.set(interaction.user.id, Date.now());
-        await canalPonto.send(`🕒 ${interaction.user} iniciou o ponto em <t:${Math.floor(Date.now()/1000)}:f>.`);
+        const agora = Date.now();
+        ultimosPontos.set(interaction.user.id, agora);
+        dadosPonto.set(interaction.user.id, { inicio: agora, pausas: 0 });
+        await canalPonto.send(`🕒 ${interaction.user} iniciou o ponto em <t:${Math.floor(agora/1000)}:f>.`);
         await interaction.reply({ content: "✅ Ponto iniciado!", ephemeral: true });
       }
 
+      // Pausar
       if (interaction.customId === "pausar_ponto") {
-        await canalPonto.send(`⏸️ ${interaction.user} pausou o ponto.`);
-        await interaction.reply({ content: "Ponto pausado.", ephemeral: true });
+        const dados = dadosPonto.get(interaction.user.id);
+        if (dados) dados.pausas++;
+        await canalPonto.send(`⏸️ ${interaction.user} pausou o ponto (${dados?.pausas || 1}ª pausa).`);
+        await interaction.reply({ content: "⏸️ Ponto pausado.", ephemeral: true });
       }
 
+      // Encerrar
       if (interaction.customId === "encerrar_ponto") {
-        await canalPonto.send(`✅ ${interaction.user} encerrou o ponto.`);
-        await interaction.reply({ content: "Ponto encerrado.", ephemeral: true });
-      }
+        const dados = dadosPonto.get(interaction.user.id);
+        if (!dados) return interaction.reply({ content: "❌ Você precisa iniciar primeiro!", ephemeral: true });
 
-      // --- Criar evento ---
-      if (interaction.customId === "criar_evento") {
-        const modal = new ModalBuilder()
-          .setCustomId("form_evento")
-          .setTitle("🗓️ Criar Evento");
-
-        const nome = new TextInputBuilder()
-          .setCustomId("titulo")
-          .setLabel("Título do evento")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-
-        const descricao = new TextInputBuilder()
-          .setCustomId("descricao")
-          .setLabel("Descrição do evento")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(true);
-
-        const data = new TextInputBuilder()
-          .setCustomId("data")
-          .setLabel("Data e hora")
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder("Ex: 20/10 às 18h")
-          .setRequired(true);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(nome),
-          new ActionRowBuilder().addComponents(descricao),
-          new ActionRowBuilder().addComponents(data)
+        const duracao = Math.floor((Date.now() - dados.inicio) / 60000);
+        await canalPonto.send(
+          `✅ ${interaction.user} encerrou o ponto.\n🕒 Início: <t:${Math.floor(dados.inicio/1000)}:t>\n⏸️ Pausas: ${dados.pausas}\n🕕 Duração total: ${duracao} min`
         );
-
-        await interaction.showModal(modal);
+        dadosPonto.delete(interaction.user.id);
+        await interaction.reply({ content: "✅ Ponto encerrado.", ephemeral: true });
       }
 
       // --- Abrir Recrutamento ---
@@ -184,29 +166,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setCustomId("form_recrutamento")
           .setTitle("📋 Formulário de Recrutamento");
 
-        const nome = new TextInputBuilder()
-          .setCustomId("nome")
-          .setLabel("Nome no jogo")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-
-        const idjogo = new TextInputBuilder()
-          .setCustomId("idjogo")
-          .setLabel("ID no jogo")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-
-        const idrecrutador = new TextInputBuilder()
-          .setCustomId("idrecrutador")
-          .setLabel("ID do recrutador")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-
-        const whatsapp = new TextInputBuilder()
-          .setCustomId("whatsapp")
-          .setLabel("WhatsApp (Opcional)")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false);
+        const nome = new TextInputBuilder().setCustomId("nome").setLabel("Nome no jogo").setStyle(TextInputStyle.Short).setRequired(true);
+        const idjogo = new TextInputBuilder().setCustomId("idjogo").setLabel("ID no jogo").setStyle(TextInputStyle.Short).setRequired(true);
+        const idrecrutador = new TextInputBuilder().setCustomId("idrecrutador").setLabel("ID do recrutador").setStyle(TextInputStyle.Short).setRequired(true);
+        const whatsapp = new TextInputBuilder().setCustomId("whatsapp").setLabel("WhatsApp (Opcional)").setStyle(TextInputStyle.Short);
 
         modal.addComponents(
           new ActionRowBuilder().addComponents(nome),
@@ -217,36 +180,40 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.showModal(modal);
       }
+
+      // --- Aprovação/Reprovação ---
+      if (interaction.customId.startsWith("rec_")) {
+        const [_, acao, userId] = interaction.customId.split("_");
+        const canalRelatorios = interaction.guild.channels.cache.find(c => c.name === canais.relatoriosRec);
+        const membro = await interaction.guild.members.fetch(userId).catch(() => null);
+
+        if (acao === "aceitar") {
+          const cargo = interaction.guild.roles.cache.find(r => r.name === "MLC");
+          if (cargo && membro) await membro.roles.add(cargo);
+
+          await canalRelatorios.send(`✅ **${membro}** foi aceito como novo membro MLC!`);
+          await interaction.message.edit({ content: "✅ Solicitação **Aprovada**!", components: [] });
+          await interaction.reply({ content: "Membro aceito com sucesso!", ephemeral: true });
+        }
+
+        if (acao === "recusar") {
+          await interaction.message.edit({ content: "❌ Solicitação **Recusada**.", components: [] });
+          if (membro) membro.send("❌ Seu recrutamento foi recusado. Refaça o formulário em 📋・recrutamento.").catch(() => {});
+          await interaction.reply({ content: "Recrutamento recusado.", ephemeral: true });
+        }
+      }
     }
 
-    // --- Enviar evento criado ---
-    if (interaction.isModalSubmit() && interaction.customId === "form_evento") {
-      const titulo = interaction.fields.getTextInputValue("titulo");
-      const descricao = interaction.fields.getTextInputValue("descricao");
-      const data = interaction.fields.getTextInputValue("data");
-      const canalEventos = interaction.guild.channels.cache.find(c => c.name === canais.eventos);
-
-      const embed = new EmbedBuilder()
-        .setTitle(`📖 ${titulo}`)
-        .setDescription(descricao)
-        .addFields({ name: "🕒 Quando", value: data })
-        .setFooter({ text: `Criado por ${interaction.user.tag}` })
-        .setColor("Blue")
-        .setTimestamp();
-
-      await canalEventos.send({ embeds: [embed] });
-      await interaction.reply({ content: "✅ Evento criado!", ephemeral: true });
-    }
-
-    // --- Enviar recrutamento ---
+    // --- Formulário de Recrutamento ---
     if (interaction.isModalSubmit() && interaction.customId === "form_recrutamento") {
       const nome = interaction.fields.getTextInputValue("nome");
       const idjogo = interaction.fields.getTextInputValue("idjogo");
       const idrecrutador = interaction.fields.getTextInputValue("idrecrutador");
       const whatsapp = interaction.fields.getTextInputValue("whatsapp") || "Não informado";
+      const canalSolicitacoes = interaction.guild.channels.cache.find(c => c.name === canais.solicitacoes);
 
       const embed = new EmbedBuilder()
-        .setTitle("📋 Novo Recrutamento")
+        .setTitle("📋 Nova Solicitação de Recrutamento")
         .addFields(
           { name: "Nome / ID", value: `${nome} / ${idjogo}` },
           { name: "ID do recrutador", value: idrecrutador },
@@ -256,7 +223,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setColor("Green")
         .setTimestamp();
 
-      await interaction.reply({ embeds: [embed] });
+      const botoes = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`rec_aceitar_${interaction.user.id}`).setLabel("✅ Aceitar").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`rec_recusar_${interaction.user.id}`).setLabel("❌ Recusar").setStyle(ButtonStyle.Danger)
+      );
+
+      await canalSolicitacoes.send({ embeds: [embed], components: [botoes] });
+      await interaction.reply({ content: "📋 Solicitação enviada para análise em 📋・solicitações-mlc!", ephemeral: true });
     }
 
   } catch (err) {
