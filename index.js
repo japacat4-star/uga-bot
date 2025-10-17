@@ -82,14 +82,14 @@ async function configurarCanais() {
     await Promise.all(msgs.map(m => m.delete().catch(() => {})));
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("criar_evento").setLabel("🗓️ Criar Evento").setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId("abrir_evento").setLabel("🗓️ Criar Evento").setStyle(ButtonStyle.Primary)
     );
 
     await canalEventos.send({
       embeds: [
         new EmbedBuilder()
-          .setTitle("📅 Criador de Eventos MLC")
-          .setDescription("Clique no botão abaixo para criar um novo evento para o servidor.")
+          .setTitle("📅 Sistema de Criação de Eventos MLC")
+          .setDescription("Clique no botão abaixo para criar e anunciar um novo evento no canal 📖・eventos-mlc.")
           .setColor("Blue")
       ],
       components: [row]
@@ -181,7 +181,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.showModal(modal);
       }
 
-      // --- Aprovação/Reprovação ---
+      // --- Abrir Criação de Evento ---
+      if (interaction.customId === "abrir_evento") {
+        const modal = new ModalBuilder()
+          .setCustomId("form_evento")
+          .setTitle("🗓️ Criar Novo Evento");
+
+        const nome = new TextInputBuilder().setCustomId("titulo").setLabel("Nome do evento").setStyle(TextInputStyle.Short).setRequired(true);
+        const descricao = new TextInputBuilder().setCustomId("descricao").setLabel("Descrição").setStyle(TextInputStyle.Paragraph).setRequired(true);
+        const data = new TextInputBuilder().setCustomId("data").setLabel("Data (ex: 20/10/2025)").setStyle(TextInputStyle.Short).setRequired(true);
+        const horario = new TextInputBuilder().setCustomId("horario").setLabel("Horário (ex: 18:00)").setStyle(TextInputStyle.Short).setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(nome),
+          new ActionRowBuilder().addComponents(descricao),
+          new ActionRowBuilder().addComponents(data),
+          new ActionRowBuilder().addComponents(horario)
+        );
+
+        await interaction.showModal(modal);
+      }
+
+      // --- Aprovação/Reprovação Recrutamento ---
       if (interaction.customId.startsWith("rec_")) {
         const [_, acao, userId] = interaction.customId.split("_");
         const canalRelatorios = interaction.guild.channels.cache.find(c => c.name === canais.relatoriosRec);
@@ -230,6 +251,29 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await canalSolicitacoes.send({ embeds: [embed], components: [botoes] });
       await interaction.reply({ content: "📋 Solicitação enviada para análise em 📋・solicitações-mlc!", ephemeral: true });
+    }
+
+    // --- Formulário de Criação de Evento ---
+    if (interaction.isModalSubmit() && interaction.customId === "form_evento") {
+      const titulo = interaction.fields.getTextInputValue("titulo");
+      const descricao = interaction.fields.getTextInputValue("descricao");
+      const data = interaction.fields.getTextInputValue("data");
+      const horario = interaction.fields.getTextInputValue("horario");
+      const canalEventos = interaction.guild.channels.cache.find(c => c.name === canais.eventos);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🎉 ${titulo}`)
+        .setDescription(descricao)
+        .addFields(
+          { name: "📅 Data", value: data, inline: true },
+          { name: "🕒 Horário", value: horario, inline: true },
+          { name: "👤 Criado por", value: `<@${interaction.user.id}>` }
+        )
+        .setColor("Blue")
+        .setTimestamp();
+
+      await canalEventos.send({ embeds: [embed] });
+      await interaction.reply({ content: "✅ Evento criado com sucesso e publicado em 📖・eventos-mlc!", ephemeral: true });
     }
 
   } catch (err) {
