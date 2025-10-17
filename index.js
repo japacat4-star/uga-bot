@@ -58,41 +58,44 @@ function formatDurationMs(ms) {
   if (h > 0) return `${h}h ${m}min`;
   return `${m}min`;
 }
-async function safeBulkDelete(channel) {
-  try {
-    if (!channel || !channel.isTextBased()) return;
-    const msgs = await channel.messages.fetch({ limit: 100 });
-    if (msgs.size > 0) await channel.bulkDelete(msgs, true).catch(() => {});
-  } catch (e) {
-    console.log("bulkDelete err:", e.message);
-  }
+
+// ---------- Limpar todas as mensagens do canal ----------
+async function limparCanalCompleto(canal) {
+  if (!canal || !canal.isTextBased()) return;
+  let msgs;
+  do {
+    msgs = await canal.messages.fetch({ limit: 100 });
+    if (msgs.size > 0) await canal.bulkDelete(msgs, true).catch(() => {});
+  } while (msgs.size >= 2);
 }
 
 // ---------- Postar painéis fixos (limpa e posta um painel único) ----------
 async function postarPainelRecrutamento(guild) {
   const canal = guild.channels.cache.find(c => c.name === CHANNELS.RECRUTAMENTO);
   if (!canal) return console.log("Canal recrutamento não encontrado.");
-  await safeBulkDelete(canal);
+  await limparCanalCompleto(canal);
   const btn = new ButtonBuilder().setCustomId("abrir_recrutamento").setLabel("📋 Preencher Formulário").setStyle(ButtonStyle.Success);
   const row = new ActionRowBuilder().addComponents(btn);
   const embed = new EmbedBuilder().setTitle("📋 Recrutamento MLC").setDescription("Clique no botão para preencher o formulário de recrutamento.").setColor("Yellow");
   await canal.send({ embeds: [embed], components: [row] }).catch(() => {});
   console.log("Painel de recrutamento postado.");
 }
+
 async function postarPainelCriarEvento(guild) {
   const canal = guild.channels.cache.find(c => c.name === CHANNELS.CRIAR_EVENTOS);
   if (!canal) return console.log("Canal criar-eventos não encontrado.");
-  await safeBulkDelete(canal);
+  await limparCanalCompleto(canal);
   const btn = new ButtonBuilder().setCustomId("abrir_evento").setLabel("📅 Criar Evento").setStyle(ButtonStyle.Primary);
   const row = new ActionRowBuilder().addComponents(btn);
   const embed = new EmbedBuilder().setTitle("📅 Criar Evento").setDescription("Clique para abrir o formulário de criação de evento. O evento será publicado em 📖・eventos-mlc").setColor("Blue");
   await canal.send({ embeds: [embed], components: [row] }).catch(() => {});
   console.log("Painel de criar evento postado.");
 }
+
 async function postarPainelBatePonto(guild) {
   const canal = guild.channels.cache.find(c => c.name === CHANNELS.BATE_PONTO);
   if (!canal) return console.log("Canal bate-ponto não encontrado.");
-  await safeBulkDelete(canal);
+  await limparCanalCompleto(canal);
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("iniciar_ponto").setLabel("🟢 Iniciar").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("pausar_ponto").setLabel("⏸️ Pausar").setStyle(ButtonStyle.Secondary),
@@ -116,7 +119,6 @@ client.once(Events.ClientReady, async () => {
     postarPainelBatePonto(guild)
   ]);
 
-  // marcar última atividade inicial para bots já no servidor (opcional: não setar para todos)
   console.log("Painéis iniciais enviados.");
 });
 
@@ -176,7 +178,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // ---------- Botões de aceitar/recusar recrutamento ----------
     if (interaction.isButton() && (interaction.customId.startsWith("rec_aceitar_") || interaction.customId.startsWith("rec_recusar_"))) {
-      // permissões: só quem tem cargo Superior ou Recrutador (se quiser alterar, remova)
       const member = interaction.member;
       const canManage = member.roles.cache.some(r => r.name === "Superior" || r.name === "Recrutador");
       if (!canManage) {
@@ -184,28 +185,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      await interaction.deferUpdate(); // responde rápido (evita falha)
-      const parts = interaction.customId.split("_"); // ["rec","aceitar","USERID"]
-      const action = parts[1]; // aceitar | recusar
+      await interaction.deferUpdate();
+      const parts = interaction.customId.split("_");
+      const action = parts[1];
       const userId = parts[2];
 
-      // atualizar a mensagem de solicitação
       try {
         const msg = interaction.message;
         if (action === "aceitar") {
-          // adicionar cargo
           const role = interaction.guild.roles.cache.find(r => r.name === ROLE_NAME);
           const target = await interaction.guild.members.fetch(userId).catch(() => null);
           if (role && target) {
             await target.roles.add(role).catch(() => {});
-            // enviar para relatórios
             const canalRel = interaction.guild.channels.cache.find(c => c.name === CHANNELS.RELATORIOS_REC);
             if (canalRel) await canalRel.send({ content: `✅ ${target} aprovado e recebeu o cargo ${ROLE_NAME}` }).catch(() => {});
           }
-          // editar msg de solicitacao
           try { await msg.edit({ content: "✅ Solicitação **Aprovada**", components: [] }); } catch {}
         } else {
-          // recusar: atualizar mensagem e avisar usuário para refazer
           try { await msg.edit({ content: "❌ Solicitação **Recusada**", components: [] }); } catch {}
           const target = await interaction.guild.members.fetch(userId).catch(() => null);
           if (target) {
@@ -268,7 +264,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton() && ["iniciar_ponto", "pausar_ponto", "encerrar_ponto"].includes(interaction.customId)) {
       const guild = interaction.guild;
       const canalLogs = guild.channels.cache.find(c => c.name === CHANNELS.LOGS_PONTOS);
-      // responder rápido para evitar falha
       await interaction.deferReply({ ephemeral: true });
 
       const uid = interaction.user.id;
@@ -304,7 +299,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         rec.encerrado = true;
         const fim = Date.now();
-        const tempoPausadoEstimado = 0; // guardamos apenas contagem de pausas; se quiser tempos exatos podemos registrar timestamps
         const durMs = fim - rec.inicio;
         const dur = formatDurationMs(durMs);
         ultimaAtividade.set(uid, Date.now());
