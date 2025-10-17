@@ -4,7 +4,6 @@ import {
 } from "discord.js";
 import express from "express";
 import dotenv from "dotenv";
-
 dotenv.config();
 
 // ---------- CLIENT ----------
@@ -50,7 +49,6 @@ function formatDurationMs(ms) {
   return h > 0 ? `${h}h ${m}min` : `${m}min`;
 }
 
-// ---------- Limpar canal ----------
 async function limparCanalCompleto(canal) {
   if (!canal || !canal.isTextBased()) return;
   let msgs;
@@ -60,41 +58,40 @@ async function limparCanalCompleto(canal) {
   } while (msgs.size >= 2);
 }
 
-// ---------- Postar painéis ----------
-async function postarPainelRecrutamento(guild) {
-  const canal = guild.channels.cache.find(c => c.name === CHANNELS.RECRUTAMENTO);
-  if (!canal) return console.log("Canal recrutamento não encontrado.");
+// ---------- Painéis fixos ----------
+async function postarPainel(canal, embed, row) {
   await limparCanalCompleto(canal);
+  await canal.send({ embeds: [embed], components: [row] }).catch(() => {});
+}
+
+async function atualizarPainelRecrutamento(guild) {
+  const canal = guild.channels.cache.find(c => c.name === CHANNELS.RECRUTAMENTO);
+  if (!canal) return;
   const btn = new ButtonBuilder().setCustomId("abrir_recrutamento").setLabel("📋 Preencher Formulário").setStyle(ButtonStyle.Success);
   const row = new ActionRowBuilder().addComponents(btn);
   const embed = new EmbedBuilder().setTitle("📋 Recrutamento MLC").setDescription("Clique no botão para preencher o formulário de recrutamento.").setColor("Yellow");
-  await canal.send({ embeds: [embed], components: [row] }).catch(() => {});
-  console.log("Painel de recrutamento postado.");
+  await postarPainel(canal, embed, row);
 }
 
-async function postarPainelCriarEvento(guild) {
+async function atualizarPainelCriarEvento(guild) {
   const canal = guild.channels.cache.find(c => c.name === CHANNELS.CRIAR_EVENTOS);
-  if (!canal) return console.log("Canal criar-eventos não encontrado.");
-  await limparCanalCompleto(canal);
+  if (!canal) return;
   const btn = new ButtonBuilder().setCustomId("abrir_evento").setLabel("📅 Criar Evento").setStyle(ButtonStyle.Primary);
   const row = new ActionRowBuilder().addComponents(btn);
   const embed = new EmbedBuilder().setTitle("📅 Criar Evento").setDescription("Clique para abrir o formulário de criação de evento. O evento será publicado em 📖・eventos-mlc").setColor("Blue");
-  await canal.send({ embeds: [embed], components: [row] }).catch(() => {});
-  console.log("Painel de criar evento postado.");
+  await postarPainel(canal, embed, row);
 }
 
-async function postarPainelBatePonto(guild) {
+async function atualizarPainelBatePonto(guild) {
   const canal = guild.channels.cache.find(c => c.name === CHANNELS.BATE_PONTO);
-  if (!canal) return console.log("Canal bate-ponto não encontrado.");
-  await limparCanalCompleto(canal);
+  if (!canal) return;
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("iniciar_ponto").setLabel("🟢 Iniciar").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("pausar_ponto").setLabel("⏸️ Pausar").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("encerrar_ponto").setLabel("🔴 Encerrar").setStyle(ButtonStyle.Danger)
   );
   const embed = new EmbedBuilder().setTitle("🔥 Bate-Ponto MLC").setDescription("Use os botões para iniciar/pausar/encerrar o ponto.").setColor("Orange");
-  await canal.send({ embeds: [embed], components: [row] }).catch(() => {});
-  console.log("Painel de bate-ponto postado.");
+  await postarPainel(canal, embed, row);
 }
 
 // ---------- Ready ----------
@@ -103,31 +100,26 @@ client.once(Events.ClientReady, async () => {
   const guild = client.guilds.cache.first();
   if (!guild) return console.log("Bot não está em guilds na cache.");
   await Promise.all([
-    postarPainelRecrutamento(guild),
-    postarPainelCriarEvento(guild),
-    postarPainelBatePonto(guild)
+    atualizarPainelRecrutamento(guild),
+    atualizarPainelCriarEvento(guild),
+    atualizarPainelBatePonto(guild)
   ]);
-  console.log("Painéis iniciais enviados.");
+  console.log("Painéis iniciais enviados e fixos.");
 });
 
 // ---------- Interações ----------
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
-    // ---------- Recrutamento ----------
+    // --- Recrutamento ---
     if (interaction.isButton() && interaction.customId === "abrir_recrutamento") {
       const modal = new ModalBuilder().setCustomId("modal_recrutamento").setTitle("📋 Formulário de Recrutamento");
-      const nick = new TextInputBuilder().setCustomId("nick").setLabel("Nick no jogo").setStyle(TextInputStyle.Short).setRequired(true);
-      const idjogo = new TextInputBuilder().setCustomId("idjogo").setLabel("ID no jogo").setStyle(TextInputStyle.Short).setRequired(true);
-      const idrecr = new TextInputBuilder().setCustomId("idrecrutador").setLabel("ID do recrutador").setStyle(TextInputStyle.Short).setRequired(true);
-      const whats = new TextInputBuilder().setCustomId("whats").setLabel("WhatsApp (Opcional)").setStyle(TextInputStyle.Short).setRequired(false);
       modal.addComponents(
-        new ActionRowBuilder().addComponents(nick),
-        new ActionRowBuilder().addComponents(idjogo),
-        new ActionRowBuilder().addComponents(idrecr),
-        new ActionRowBuilder().addComponents(whats)
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("nick").setLabel("Nick no jogo").setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("idjogo").setLabel("ID no jogo").setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("idrecrutador").setLabel("ID do recrutador").setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("whats").setLabel("WhatsApp (Opcional)").setStyle(TextInputStyle.Short).setRequired(false))
       );
-      await interaction.showModal(modal);
-      return;
+      return await interaction.showModal(modal);
     }
 
     if (interaction.isModalSubmit() && interaction.customId === "modal_recrutamento") {
@@ -136,6 +128,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const idjogo = interaction.fields.getTextInputValue("idjogo");
       const idrecr = interaction.fields.getTextInputValue("idrecrutador");
       const whats = interaction.fields.getTextInputValue("whats") || "Não informado";
+
       const embed = new EmbedBuilder()
         .setTitle("📋 Nova Solicitação de Recrutamento")
         .addFields(
@@ -147,26 +140,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
         )
         .setColor("Yellow")
         .setTimestamp();
-      const aceitar = new ButtonBuilder().setCustomId(`rec_aceitar_${interaction.user.id}`).setLabel("✅ Aceitar").setStyle(ButtonStyle.Success);
-      const recusar = new ButtonBuilder().setCustomId(`rec_recusar_${interaction.user.id}`).setLabel("❌ Recusar").setStyle(ButtonStyle.Danger);
-      const row = new ActionRowBuilder().addComponents(aceitar, recusar);
+
+      const row = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder().setCustomId(`rec_aceitar_${interaction.user.id}`).setLabel("✅ Aceitar").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`rec_recusar_${interaction.user.id}`).setLabel("❌ Recusar").setStyle(ButtonStyle.Danger)
+        );
+
       const canalSolic = interaction.guild.channels.cache.find(c => c.name === CHANNELS.SOLICITACOES);
-      if (!canalSolic) {
-        await interaction.editReply({ content: "❌ Canal de solicitações não encontrado. Avise um admin." });
-        return;
-      }
-      await canalSolic.send({ content: `Nova solicitação de ${interaction.user}`, embeds: [embed], components: [row] }).catch(() => {});
+      if (!canalSolic) return await interaction.editReply({ content: "❌ Canal de solicitações não encontrado. Avise um admin." });
+      await canalSolic.send({ content: `Nova solicitação de ${interaction.user}`, embeds: [embed], components: [row] });
       await interaction.editReply({ content: "✅ Solicitação enviada para análise em 📋・solicitações-mlc" });
       return;
     }
 
+    // --- Aceitar/Recusar Recrutamento ---
     if (interaction.isButton() && (interaction.customId.startsWith("rec_aceitar_") || interaction.customId.startsWith("rec_recusar_"))) {
       const member = interaction.member;
       const canManage = member.roles.cache.some(r => r.name === "Superior" || r.name === "Recrutador");
-      if (!canManage) {
-        await interaction.reply({ content: "🚫 Você não tem permissão para gerenciar solicitações.", ephemeral: true });
-        return;
-      }
+      if (!canManage) return await interaction.reply({ content: "🚫 Você não tem permissão.", ephemeral: true });
+
       await interaction.deferUpdate();
       const [_, action, userId] = interaction.customId.split("_");
       const msg = interaction.message;
@@ -180,26 +173,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
       } else {
         try { await msg.edit({ content: "❌ Solicitação **Recusada**", components: [] }); } catch {}
         const target = await interaction.guild.members.fetch(userId).catch(() => null);
-        if (target) target.send("❌ Seu recrutamento foi recusado. Por favor, preencha novamente o formulário em 📋・recrutamento.").catch(() => {});
+        if (target) target.send("❌ Seu recrutamento foi recusado. Preencha novamente em 📋・recrutamento.").catch(() => {});
       }
       return;
     }
 
-    // ---------- Criar Evento ----------
+    // --- Criar Evento ---
     if (interaction.isButton() && interaction.customId === "abrir_evento") {
       const modal = new ModalBuilder().setCustomId("modal_evento").setTitle("📅 Criar Evento");
-      const titulo = new TextInputBuilder().setCustomId("titulo").setLabel("Título do evento").setStyle(TextInputStyle.Short).setRequired(true);
-      const data = new TextInputBuilder().setCustomId("dataEvento").setLabel("Data (ex: 20/10/2025)").setStyle(TextInputStyle.Short).setRequired(true);
-      const horario = new TextInputBuilder().setCustomId("horarioEvento").setLabel("Horário (ex: 18:00)").setStyle(TextInputStyle.Short).setRequired(true);
-      const descricao = new TextInputBuilder().setCustomId("descricaoEvento").setLabel("Descrição").setStyle(TextInputStyle.Paragraph).setRequired(true);
       modal.addComponents(
-        new ActionRowBuilder().addComponents(titulo),
-        new ActionRowBuilder().addComponents(data),
-        new ActionRowBuilder().addComponents(horario),
-        new ActionRowBuilder().addComponents(descricao)
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("titulo").setLabel("Título do evento").setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("dataEvento").setLabel("Data (ex: 20/10/2025)").setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("horarioEvento").setLabel("Horário (ex: 18:00)").setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("descricaoEvento").setLabel("Descrição").setStyle(TextInputStyle.Paragraph).setRequired(true))
       );
-      await interaction.showModal(modal);
-      return;
+      return await interaction.showModal(modal);
     }
 
     if (interaction.isModalSubmit() && interaction.customId === "modal_evento") {
@@ -208,6 +196,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const data = interaction.fields.getTextInputValue("dataEvento");
       const horario = interaction.fields.getTextInputValue("horarioEvento");
       const descricao = interaction.fields.getTextInputValue("descricaoEvento");
+
       const embed = new EmbedBuilder()
         .setTitle(`🎉 ${titulo}`)
         .setDescription(descricao)
@@ -218,17 +207,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
         )
         .setColor("Blue")
         .setTimestamp();
+
       const canalEventos = interaction.guild.channels.cache.find(c => c.name === CHANNELS.EVENTOS_MLC);
-      if (!canalEventos) {
-        await interaction.editReply({ content: "❌ Canal de eventos não encontrado." });
-        return;
-      }
-      await canalEventos.send({ embeds: [embed] }).catch(() => {});
+      if (!canalEventos) return await interaction.editReply({ content: "❌ Canal de eventos não encontrado." });
+      await canalEventos.send({ embeds: [embed] });
       await interaction.editReply({ content: "✅ Evento criado e publicado em 📖・eventos-mlc" });
       return;
     }
 
-    // ---------- BATE-PONTO ----------
+    // --- BATE-PONTO ---
     if (interaction.isButton() && ["iniciar_ponto", "pausar_ponto", "encerrar_ponto"].includes(interaction.customId)) {
       const canalLogs = interaction.guild.channels.cache.find(c => c.name === CHANNELS.LOGS_PONTOS);
       await interaction.deferReply({ ephemeral: true });
@@ -238,8 +225,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         pontos.set(uid, { inicio: Date.now(), pausas: 0, encerrado: false });
         ultimaAtividade.set(uid, Date.now());
         canalLogs?.send(`🟢 <@${uid}> iniciou o ponto em <t:${Math.floor(Date.now()/1000)}:f>.`).catch(() => {});
-        await interaction.editReply({ content: "🟢 Ponto iniciado (registro em 🔥・logs-pontos)." });
-        return;
+        return await interaction.editReply({ content: "🟢 Ponto iniciado (registro em 🔥・logs-pontos)." });
       }
 
       if (interaction.customId === "pausar_ponto") {
@@ -249,14 +235,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         rec.pausaInicio = Date.now();
         ultimaAtividade.set(uid, Date.now());
         canalLogs?.send(`⏸️ <@${uid}> pausou o ponto (pausas: ${rec.pausas}).`).catch(() => {});
-        await interaction.editReply({ content: `⏸️ Ponto pausado (pausas: ${rec.pausas}).` });
-        return;
+        return await interaction.editReply({ content: `⏸️ Ponto pausado (pausas: ${rec.pausas}).` });
       }
 
       if (interaction.customId === "encerrar_ponto") {
         const rec = pontos.get(uid);
         if (!rec) return await interaction.editReply({ content: "⚠️ Você não tem ponto iniciado." });
-        rec.encerrado = true;
         const dur = formatDurationMs(Date.now() - rec.inicio);
         ultimaAtividade.set(uid, Date.now());
         canalLogs?.send(`🔴 <@${uid}> encerrou o ponto.\n🕐 Início: <t:${Math.floor(rec.inicio/1000)}:t>\n⏸️ Pausas: ${rec.pausas}\n⏱️ Duração: ${dur}`).catch(() => {});
@@ -272,7 +256,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// ---------- Rotina diária: expulsar inativos ----------
+// ---------- Rotina diária ----------
 setInterval(async () => {
   try {
     const guild = client.guilds.cache.first();
@@ -281,15 +265,13 @@ setInterval(async () => {
       if (Date.now() - lastTs > INACTIVITY_MS) {
         const member = await guild.members.fetch(userId).catch(() => null);
         if (!member) { ultimaAtividade.delete(userId); continue; }
-        await member.kick("Inatividade (14 dias sem ponto)").catch((e) => console.log("kick err:", e.message));
+        await member.kick("Inatividade (14 dias sem ponto)").catch(() => {});
         const canalInativos = guild.channels.cache.find(c => c.name === CHANNELS.INATIVIDADES);
         canalInativos?.send(`⚠️ <@${userId}> foi expulso por inatividade (14 dias sem bater ponto).`).catch(() => {});
         ultimaAtividade.delete(userId);
       }
     }
-  } catch (e) {
-    console.error("Erro rotina inatividade:", e);
-  }
+  } catch (e) { console.error("Erro rotina inatividade:", e); }
 }, 24 * 60 * 60 * 1000);
 
 // ---------- LOGIN ----------
