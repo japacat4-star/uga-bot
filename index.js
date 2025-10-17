@@ -1,18 +1,10 @@
-import {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  Events
+import { 
+  Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, 
+  ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, Events 
 } from "discord.js";
 import express from "express";
 import dotenv from "dotenv";
+
 dotenv.config();
 
 // ---------- CLIENT ----------
@@ -26,12 +18,12 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-// ---------- WEB (Render keep-alive) ----------
+// ---------- WEB (keep-alive) ----------
 const app = express();
 app.all("/", (req, res) => res.send("Bot MLC online ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("🌐 Servidor web ativo"));
 
-// ---------- Config (canais exatos e cargo) ----------
+// ---------- Config ----------
 const CHANNELS = {
   RECRUTAMENTO: "📋・recrutamento",
   SOLICITACOES: "📋・solicitações-mlc",
@@ -47,7 +39,7 @@ const INACTIVITY_DAYS = 14;
 const INACTIVITY_MS = INACTIVITY_DAYS * 24 * 60 * 60 * 1000;
 
 // ---------- Estado em memória ----------
-const pontos = new Map(); // userId => { inicio: timestamp, pausas: number, pausando?: boolean, pausaInicio?: timestamp }
+const pontos = new Map(); // userId => { inicio, pausas, pausando?, pausaInicio?, encerrado? }
 const ultimaAtividade = new Map(); // userId => timestamp
 
 // ---------- Helpers ----------
@@ -55,11 +47,10 @@ function formatDurationMs(ms) {
   const totalMin = Math.floor(ms / 60000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  if (h > 0) return `${h}h ${m}min`;
-  return `${m}min`;
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
 }
 
-// ---------- Limpar todas as mensagens do canal ----------
+// ---------- Limpar canal ----------
 async function limparCanalCompleto(canal) {
   if (!canal || !canal.isTextBased()) return;
   let msgs;
@@ -69,7 +60,7 @@ async function limparCanalCompleto(canal) {
   } while (msgs.size >= 2);
 }
 
-// ---------- Postar painéis fixos (limpa e posta um painel único) ----------
+// ---------- Postar painéis ----------
 async function postarPainelRecrutamento(guild) {
   const canal = guild.channels.cache.find(c => c.name === CHANNELS.RECRUTAMENTO);
   if (!canal) return console.log("Canal recrutamento não encontrado.");
@@ -111,21 +102,18 @@ client.once(Events.ClientReady, async () => {
   console.log(`✅ Logado como ${client.user.tag}`);
   const guild = client.guilds.cache.first();
   if (!guild) return console.log("Bot não está em guilds na cache.");
-
-  // postar painéis
   await Promise.all([
     postarPainelRecrutamento(guild),
     postarPainelCriarEvento(guild),
     postarPainelBatePonto(guild)
   ]);
-
   console.log("Painéis iniciais enviados.");
 });
 
-// ---------- Interações (botões + modais) ----------
+// ---------- Interações ----------
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
-    // ---------- Botão: abrir recrutamento ----------
+    // ---------- Recrutamento ----------
     if (interaction.isButton() && interaction.customId === "abrir_recrutamento") {
       const modal = new ModalBuilder().setCustomId("modal_recrutamento").setTitle("📋 Formulário de Recrutamento");
       const nick = new TextInputBuilder().setCustomId("nick").setLabel("Nick no jogo").setStyle(TextInputStyle.Short).setRequired(true);
@@ -142,14 +130,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // ---------- Modal submit: recrutamento ----------
     if (interaction.isModalSubmit() && interaction.customId === "modal_recrutamento") {
       await interaction.deferReply({ ephemeral: true });
       const nick = interaction.fields.getTextInputValue("nick");
       const idjogo = interaction.fields.getTextInputValue("idjogo");
       const idrecr = interaction.fields.getTextInputValue("idrecrutador");
       const whats = interaction.fields.getTextInputValue("whats") || "Não informado";
-
       const embed = new EmbedBuilder()
         .setTitle("📋 Nova Solicitação de Recrutamento")
         .addFields(
@@ -161,11 +147,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         )
         .setColor("Yellow")
         .setTimestamp();
-
       const aceitar = new ButtonBuilder().setCustomId(`rec_aceitar_${interaction.user.id}`).setLabel("✅ Aceitar").setStyle(ButtonStyle.Success);
       const recusar = new ButtonBuilder().setCustomId(`rec_recusar_${interaction.user.id}`).setLabel("❌ Recusar").setStyle(ButtonStyle.Danger);
       const row = new ActionRowBuilder().addComponents(aceitar, recusar);
-
       const canalSolic = interaction.guild.channels.cache.find(c => c.name === CHANNELS.SOLICITACOES);
       if (!canalSolic) {
         await interaction.editReply({ content: "❌ Canal de solicitações não encontrado. Avise um admin." });
@@ -176,7 +160,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // ---------- Botões de aceitar/recusar recrutamento ----------
     if (interaction.isButton() && (interaction.customId.startsWith("rec_aceitar_") || interaction.customId.startsWith("rec_recusar_"))) {
       const member = interaction.member;
       const canManage = member.roles.cache.some(r => r.name === "Superior" || r.name === "Recrutador");
@@ -184,37 +167,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply({ content: "🚫 Você não tem permissão para gerenciar solicitações.", ephemeral: true });
         return;
       }
-
       await interaction.deferUpdate();
-      const parts = interaction.customId.split("_");
-      const action = parts[1];
-      const userId = parts[2];
-
-      try {
-        const msg = interaction.message;
-        if (action === "aceitar") {
-          const role = interaction.guild.roles.cache.find(r => r.name === ROLE_NAME);
-          const target = await interaction.guild.members.fetch(userId).catch(() => null);
-          if (role && target) {
-            await target.roles.add(role).catch(() => {});
-            const canalRel = interaction.guild.channels.cache.find(c => c.name === CHANNELS.RELATORIOS_REC);
-            if (canalRel) await canalRel.send({ content: `✅ ${target} aprovado e recebeu o cargo ${ROLE_NAME}` }).catch(() => {});
-          }
-          try { await msg.edit({ content: "✅ Solicitação **Aprovada**", components: [] }); } catch {}
-        } else {
-          try { await msg.edit({ content: "❌ Solicitação **Recusada**", components: [] }); } catch {}
-          const target = await interaction.guild.members.fetch(userId).catch(() => null);
-          if (target) {
-            target.send("❌ Seu recrutamento foi recusado. Por favor, preencha novamente o formulário em 📋・recrutamento.").catch(() => {});
-          }
-        }
-      } catch (e) {
-        console.error("Erro ao processar aceitar/recusar:", e);
+      const [_, action, userId] = interaction.customId.split("_");
+      const msg = interaction.message;
+      if (action === "aceitar") {
+        const role = interaction.guild.roles.cache.find(r => r.name === ROLE_NAME);
+        const target = await interaction.guild.members.fetch(userId).catch(() => null);
+        if (role && target) await target.roles.add(role).catch(() => {});
+        const canalRel = interaction.guild.channels.cache.find(c => c.name === CHANNELS.RELATORIOS_REC);
+        if (canalRel && target) await canalRel.send({ content: `✅ ${target} aprovado e recebeu o cargo ${ROLE_NAME}` }).catch(() => {});
+        try { await msg.edit({ content: "✅ Solicitação **Aprovada**", components: [] }); } catch {}
+      } else {
+        try { await msg.edit({ content: "❌ Solicitação **Recusada**", components: [] }); } catch {}
+        const target = await interaction.guild.members.fetch(userId).catch(() => null);
+        if (target) target.send("❌ Seu recrutamento foi recusado. Por favor, preencha novamente o formulário em 📋・recrutamento.").catch(() => {});
       }
       return;
     }
 
-    // ---------- Painel criar evento (abre modal) ----------
+    // ---------- Criar Evento ----------
     if (interaction.isButton() && interaction.customId === "abrir_evento") {
       const modal = new ModalBuilder().setCustomId("modal_evento").setTitle("📅 Criar Evento");
       const titulo = new TextInputBuilder().setCustomId("titulo").setLabel("Título do evento").setStyle(TextInputStyle.Short).setRequired(true);
@@ -231,14 +202,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // ---------- Submit: evento ----------
     if (interaction.isModalSubmit() && interaction.customId === "modal_evento") {
       await interaction.deferReply({ ephemeral: true });
       const titulo = interaction.fields.getTextInputValue("titulo");
       const data = interaction.fields.getTextInputValue("dataEvento");
       const horario = interaction.fields.getTextInputValue("horarioEvento");
       const descricao = interaction.fields.getTextInputValue("descricaoEvento");
-
       const embed = new EmbedBuilder()
         .setTitle(`🎉 ${titulo}`)
         .setDescription(descricao)
@@ -249,7 +218,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         )
         .setColor("Blue")
         .setTimestamp();
-
       const canalEventos = interaction.guild.channels.cache.find(c => c.name === CHANNELS.EVENTOS_MLC);
       if (!canalEventos) {
         await interaction.editReply({ content: "❌ Canal de eventos não encontrado." });
@@ -260,50 +228,38 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // ---------- BATE-PONTO: iniciar / pausar / encerrar ----------
+    // ---------- BATE-PONTO ----------
     if (interaction.isButton() && ["iniciar_ponto", "pausar_ponto", "encerrar_ponto"].includes(interaction.customId)) {
-      const guild = interaction.guild;
-      const canalLogs = guild.channels.cache.find(c => c.name === CHANNELS.LOGS_PONTOS);
+      const canalLogs = interaction.guild.channels.cache.find(c => c.name === CHANNELS.LOGS_PONTOS);
       await interaction.deferReply({ ephemeral: true });
-
       const uid = interaction.user.id;
+
       if (interaction.customId === "iniciar_ponto") {
         pontos.set(uid, { inicio: Date.now(), pausas: 0, encerrado: false });
         ultimaAtividade.set(uid, Date.now());
-        const msg = `🟢 <@${uid}> iniciou o ponto em <t:${Math.floor(Date.now()/1000)}:f>.`;
-        canalLogs?.send(msg).catch(() => {});
+        canalLogs?.send(`🟢 <@${uid}> iniciou o ponto em <t:${Math.floor(Date.now()/1000)}:f>.`).catch(() => {});
         await interaction.editReply({ content: "🟢 Ponto iniciado (registro em 🔥・logs-pontos)." });
         return;
       }
 
       if (interaction.customId === "pausar_ponto") {
         const rec = pontos.get(uid);
-        if (!rec) {
-          await interaction.editReply({ content: "⚠️ Você ainda não iniciou um ponto." });
-          return;
-        }
-        rec.pausas = (rec.pausas || 0) + 1;
+        if (!rec) return await interaction.editReply({ content: "⚠️ Você ainda não iniciou um ponto." });
+        rec.pausas++;
         rec.pausaInicio = Date.now();
         ultimaAtividade.set(uid, Date.now());
-        const msg = `⏸️ <@${uid}> pausou o ponto (pausas: ${rec.pausas}).`;
-        canalLogs?.send(msg).catch(() => {});
+        canalLogs?.send(`⏸️ <@${uid}> pausou o ponto (pausas: ${rec.pausas}).`).catch(() => {});
         await interaction.editReply({ content: `⏸️ Ponto pausado (pausas: ${rec.pausas}).` });
         return;
       }
 
       if (interaction.customId === "encerrar_ponto") {
         const rec = pontos.get(uid);
-        if (!rec) {
-          await interaction.editReply({ content: "⚠️ Você não tem ponto iniciado." });
-          return;
-        }
+        if (!rec) return await interaction.editReply({ content: "⚠️ Você não tem ponto iniciado." });
         rec.encerrado = true;
-        const fim = Date.now();
-        const durMs = fim - rec.inicio;
-        const dur = formatDurationMs(durMs);
+        const dur = formatDurationMs(Date.now() - rec.inicio);
         ultimaAtividade.set(uid, Date.now());
-        const msg = `🔴 <@${uid}> encerrou o ponto.\n🕐 Início: <t:${Math.floor(rec.inicio/1000)}:t>\n⏸️ Pausas: ${rec.pausas || 0}\n⏱️ Duração: ${dur}`;
-        canalLogs?.send({ content: msg }).catch(() => {});
+        canalLogs?.send(`🔴 <@${uid}> encerrou o ponto.\n🕐 Início: <t:${Math.floor(rec.inicio/1000)}:t>\n⏸️ Pausas: ${rec.pausas}\n⏱️ Duração: ${dur}`).catch(() => {});
         await interaction.editReply({ content: `🔴 Ponto encerrado — ${dur} (registro em 🔥・logs-pontos).` });
         pontos.delete(uid);
         return;
